@@ -12,19 +12,17 @@ from Utils import train_one_epoch, evaluate, read_split_data, MNISTDataset
 
 def objective(trial, args, train_loader, val_loader, device):
     # 定义超参数搜索空间
-    def objective(trial, args, train_loader, val_loader, device):
-    # 定义超参数搜索空间
-    patch_size = trial.suggest_int('patch_size', 2, 4)
+    patch_size = trial.suggest_int('patch_size', 4, 8)
     window_size = trial.suggest_int('window_size', 2, 4)
-    embed_dim = trial.suggest_categorical('embed_dim', [48, 96, 128])
-    depths_str = trial.suggest_categorical('depths', ['depth1', 'depth2'])
+    embed_dim = trial.suggest_categorical('embed_dim', [48, 96, 192])
+    depths_str = trial.suggest_categorical('depths', ['depth1', 'depth2', 'depth3'])
 
     # 根据 depth 选择对应的配置
     depths_map = {
-        'depth1': (2, 2, 6, 2),  # 浅的层次
-        'depth2': (2, 2, 18, 2),  # 中等复杂度
+        'depth1': (2, 2, 6, 2),
+        'depth2': (2, 2, 18, 2),
+        'depth3': (2, 2, 18, 6)
     }
-    
     depths = depths_map[depths_str]
 
     # 创建模型

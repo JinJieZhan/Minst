@@ -65,53 +65,58 @@ def read_split_data(root: str, val_rate: float = 0.2):
 
 
 class MNISTDataset(Dataset):
-    def __init__(self, images_path, images_label, transform=None):
+    def __init__(self, images_path: list, images_class: list, transform=None):
         self.images_path = images_path
-        self.images_label = images_label
+        self.images_class = images_class
         self.transform = transform
 
     def __len__(self):
         return len(self.images_path)
 
-    def __getitem__(self, index):
-        img_path = self.images_path[index]
-        label = self.images_label[index]
-        img = Image.open(img_path).convert("L")  # MNIST是灰度图像
+    def __getitem__(self, item):
+        img = Image.open(self.images_path[item])
 
-        if self.transform:
+        label = self.images_class[item]
+
+        if self.transform is not None:
             img = self.transform(img)
+
         return img, label
 
 
-def train_one_epoch(model, optimizer, load, device, epoch):
+def train_one_epoch(model, optimizer, data_loader, device, epoch):
     model.train()
     loss_function = torch.nn.CrossEntropyLoss()
-    accu_loss, accu_num = 0.0, 0
+    accu_loss = torch.zeros(1).to(device)  # 累计损失
+    accu_num = torch.zeros(1).to(device)  # 累计预测正确的样本数
+    optimizer.zero_grad()
+
     sample_num = 0
+    data_loader = tqdm(data_loader, file=sys.stdout)
+    for step, data in enumerate(data_loader):
+        images, labels = data
+        sample_num += images.shape[0]
 
-    data_loader = tqdm(load, file=sys.stdout, desc=f"[train epoch {epoch}]")
+        pred = model(images.to(device))
+        pred_classes = torch.max(pred, dim=1)[1]
+        accu_num += torch.eq(pred_classes, labels.to(device)).sum()
 
-    for step, (images, labels) in enumerate(data_loader):
-        images, labels = images.to(device), labels.to(device)
-        sample_num += images.size(0)
+        loss = loss_function(pred, labels.to(device))
+        loss.backward()
+        accu_loss += loss.detach()
 
+        data_loader.desc = "[train epoch {}] loss: {:.3f}, acc: {:.3f}".format(epoch,
+                                                                               accu_loss.item() / (step + 1),
+                                                                               accu_num.item() / sample_num)
+
+        if not torch.isfinite(loss):
+            print('WARNING: non-finite loss, ending training ', loss)
+            sys.exit(1)
+
+        optimizer.step()
         optimizer.zero_grad()
 
-        pred = model(images)
-        pred_classes = torch.argmax(pred, dim=1)
-        accu_num += (pred_classes == labels).sum().item()
-
-        loss = loss_function(pred, labels)
-        loss.backward()
-        optimizer.step()
-
-        accu_loss += loss.item()
-
-        # 更新 tqdm 描述
-        data_loader.set_description(
-            f"[train epoch {epoch}] loss: {accu_loss / (step + 1):.3f}, acc: {accu_num / sample_num:.3f}")
-
-    return accu_loss / (step + 1), accu_num / sample_num
+    return accu_loss.item() / (step + 1), accu_num.item() / sample_num
 
 
 @torch.no_grad()
@@ -120,25 +125,24 @@ def evaluate(model, data_loader, device, epoch):
 
     model.eval()
 
-    accu_num = torch.zeros(1, device=device)  # 累计预测正确的样本数
-    accu_loss = torch.zeros(1, device=device)  # 累计损失
+    accu_num = torch.zeros(1).to(device)  # 累计预测正确的样本数
+    accu_loss = torch.zeros(1).to(device)  # 累计损失
 
     sample_num = 0
     data_loader = tqdm(data_loader, file=sys.stdout)
-    for step, (images, labels) in enumerate(data_loader):
-        images, labels = images.to(device), labels.to(device)
-        sample_num += images.size(0)
+    for step, data in enumerate(data_loader):
+        images, labels = data
+        sample_num += images.shape[0]
 
-        pred = model(images)
-        pred_classes = torch.argmax(pred, dim=1)
-        accu_num += torch.eq(pred_classes, labels).sum()
+        pred = model(images.to(device))
+        pred_classes = torch.max(pred, dim=1)[1]
+        accu_num += torch.eq(pred_classes, labels.to(device)).sum()
 
-        loss = loss_function(pred, labels)
+        loss = loss_function(pred, labels.to(device))
         accu_loss += loss
 
-        # 更新 tqdm 描述
-        data_loader.set_description(f"[valid epoch {epoch}] loss: {accu_loss.item() / (step + 1):.3f}, "
-                                    f"acc: {accu_num.item() / sample_num:.3f}")
+        data_loader.desc = "[valid epoch {}] loss: {:.3f}, acc: {:.3f}".format(epoch,
+                                                                               accu_loss.item() / (step + 1),
+                                                                               accu_num.item() / sample_num)
 
-    # 将损失和准确度返回为标量值
     return accu_loss.item() / (step + 1), accu_num.item() / sample_num

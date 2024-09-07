@@ -2,6 +2,7 @@ import argparse
 import optuna
 import torch
 import torch.optim as optim
+from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from torchvision import transforms
 import os
@@ -12,10 +13,10 @@ from Utils import train_one_epoch, evaluate, read_split_data, MNISTDataset
 
 def objective(trial, args, train_loader, val_loader, device):
     # 定义超参数搜索空间
-    patch_size = trial.suggest_int('patch_size', 4, 8)
-    window_size = trial.suggest_int('window_size', 2, 4)
-    embed_dim = trial.suggest_categorical('embed_dim', [48, 96, 192])
-    depths_str = trial.suggest_categorical('depths', ['depth1', 'depth2', 'depth3'])
+    patch_size = trial.suggest_int('patch_size', 1, 4)  # 定义范围，而不是列表
+    window_size = trial.suggest_int('window_size', 2, 4)  # 定义范围，而不是列表
+    embed_dim = trial.suggest_categorical('embed_dim', [48, 96, 192])  # 合法
+    depths_str = trial.suggest_categorical('depths', ['depth1', 'depth2', 'depth3'])  # 合法
 
     # 根据 depth 选择对应的配置
     depths_map = {
@@ -86,18 +87,34 @@ def main(args):
 
     # 创建 Optuna study
     study = optuna.create_study(direction="maximize")
-    study.optimize(lambda trial: objective(trial, args, train_loader, val_loader, device), n_trials=50)
+    study.optimize(lambda trial: objective(trial, args, train_loader, val_loader, device), n_trials=30)
 
     # 尝试保存优化结果
-    try:
-        import optuna.visualization as vis
-        vis.plot_optimization_history(study).savefig("optimization_history.png")
-        vis.plot_parallel_coordinate(study).savefig("parallel_coordinate.png")
-        vis.plot_param_importances(study).savefig("param_importances.png")
-    except ImportError:
-        print("Optuna visualization libraries are not available.")
+    # 绘制并保存 Optuna 结果图
+    plot_optimization_history(study, "optimization_history.png")
+    plot_parallel_coordinate(study, "parallel_coordinate.png")
+    plot_param_importances(study, "param_importances.png")
 
+    # 输出最优超参数
     print(f"Best trial: {study.best_trial.params}")
+
+
+def plot_optimization_history(study, filename):
+    optuna.visualization.matplotlib.plot_optimization_history(study)
+    plt.savefig(filename)
+    plt.close()
+
+
+def plot_parallel_coordinate(study, filename):
+    optuna.visualization.matplotlib.plot_parallel_coordinate(study)
+    plt.savefig(filename)
+    plt.close()
+
+
+def plot_param_importances(study, filename):
+    optuna.visualization.matplotlib.plot_param_importances(study)
+    plt.savefig(filename)
+    plt.close()
 
 
 if __name__ == "__main__":
